@@ -1,0 +1,225 @@
+/*-- scss:defaults --*/
+
+// Fonts
+$font-family-sans-serif: 'Source Sans Pro', Helvetica, sans-serif;
+$presentation-heading-font: 'Source Sans Pro', Helvetica, sans-serif;
+$presentation-heading-color: #2c3e50;
+$presentation-font-size-root: 40px;
+$presentation-line-height: 1.4;
+
+// Colors
+$body-bg: #ffffff;
+$body-color: #2c3e50;
+$link-color: #3498db;
+$selection-bg: #3498db;
+$selection-color: #ffffff;
+
+// Headings
+$presentation-h1-font-size: 2.2em;
+$presentation-h2-font-size: 1.6em;
+$presentation-h3-font-size: 1.3em;
+$presentation-heading-font-weight: 600;
+
+// Code
+$code-color: #e74c3c;
+$code-bg: #f8f9fa;
+
+/*-- scss:rules --*/
+
+// Slide backgrounds
+.reveal .slide-background-content {
+  background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%);
+}
+
+// Title slide
+.reveal .title-slide {
+  h1.title {
+    font-size: 2.5em;
+    font-weight: 700;
+    color: #2c3e50;
+    margin-bottom: 0.3em;
+  }
+
+  p.subtitle {
+    font-size: 1.4em;
+    color: #7f8c8d;
+    margin-bottom: 1em;
+  }
+
+  p.author {
+    font-size: 1.1em;
+    color: #34495e;
+  }
+
+  p.date {
+    font-size: 0.9em;
+    color: #95a5a6;
+  }
+}
+
+// Section headers (dark backgrounds)
+.reveal section[data-background-color] {
+  h1, h2 {
+    color: #ffffff !important;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+  }
+}
+
+// Regular headings
+.reveal h2 {
+  border-bottom: 3px solid #3498db;
+  padding-bottom: 0.3em;
+  margin-bottom: 0.8em;
+}
+
+// Lists
+.reveal ul, .reveal ol {
+  margin-left: 1em;
+}
+
+.reveal li {
+  margin-bottom: 0.5em;
+  line-height: 1.4;
+}
+
+// Incremental list items
+.reveal .incremental li {
+  opacity: 0.3;
+}
+
+.reveal .incremental li.visible {
+  opacity: 1;
+}
+
+// Tables
+.reveal table {
+  font-size: 0.75em;
+  border-collapse: collapse;
+  margin: 1em auto;
+}
+
+.reveal table th {
+  background-color: #3498db;
+  color: white;
+  padding: 0.6em 1em;
+  font-weight: 600;
+}
+
+.reveal table td {
+  padding: 0.5em 1em;
+  border-bottom: 1px solid #ecf0f1;
+}
+
+.reveal table tr:nth-child(even) {
+  background-color: #f8f9fa;
+}
+
+// Blockquotes
+.reveal blockquote {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 1em 1.5em;
+  border-radius: 8px;
+  border: none;
+  font-style: italic;
+  font-size: 1.1em;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+// Code blocks
+.reveal pre {
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+  border-radius: 8px;
+}
+
+.reveal code {
+  font-family: 'Fira Code', monospace;
+  font-size: 0.9em;
+}
+
+// Columns
+.reveal .columns {
+  display: flex;
+  gap: 2em;
+}
+
+// Callout-like boxes
+.reveal .fragment {
+  transition: all 0.3s ease;
+}
+
+// Footer
+.reveal .footer {
+  font-size: 0.5em;
+  color: #95a5a6;
+}
+
+// Slide numbers
+.reveal .slide-number {
+  font-size: 0.6em;
+  color: #7f8c8d;
+  background-color: transparent;
+}
+
+// Progress bar
+.reveal .progress {
+  height: 4px;
+  color: #3498db;
+}
+
+// Mermaid diagrams
+.reveal .mermaid {
+  font-size: 0.8em;
+}
+
+// Smaller text class
+.reveal .smaller {
+  font-size: 0.75em;
+}
+
+// Scrollable slides
+.reveal .scrollable {
+  overflow-y: auto;
+  max-height: 600px;
+}
+
+// Figure captions
+.reveal figcaption {
+  font-size: 0.6em;
+  color: #95a5a6;
+  margin-top: 0.5em;
+}
+
+// Strong emphasis
+.reveal strong {
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+// Links
+.reveal a {
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  transition: border-color 0.2s;
+}
+
+.reveal a:hover {
+  border-bottom-color: #3498db;
+}
+
+// Emoji sizing
+.reveal p {
+  line-height: 1.5;
+}
+
+// Two-column layout improvements
+.reveal .column {
+  vertical-align: top;
+}
+
+// Print styles
+@media print {
+  .reveal .slides section {
+    page-break-after: always;
+  }
+}

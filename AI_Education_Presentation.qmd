@@ -1,0 +1,685 @@
+---
+title: "Generative AI in Croatian Education"
+subtitle: "A Media Frame Analysis (2023–2025)"
+author: "Lux"
+date: today
+format:
+  revealjs:
+    theme: [default, custom.scss]
+    logo: ""
+    footer: "AI in Croatian Education | Media Frame Analysis"
+    transition: slide
+    slide-number: true
+    progress: true
+    hash: true
+    center: true
+    code-fold: true
+    code-summary: "Code"
+    highlight-style: github
+    fig-width: 10
+    fig-height: 6
+    fig-dpi: 150
+execute:
+  warning: false
+  message: false
+  echo: false
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+# Load packages
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(lubridate)
+library(ggplot2)
+library(scales)
+library(knitr)
+library(kableExtra)
+library(openxlsx)
+
+# Set theme
+theme_presentation <- theme_minimal(base_size = 16) +
+  theme(
+    plot.title = element_text(face = "bold", size = 20),
+    plot.subtitle = element_text(color = "gray40", size = 14),
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    axis.text = element_text(size = 12),
+    legend.text = element_text(size = 12)
+  )
+theme_set(theme_presentation)
+
+# Colors
+frame_colors <- c(
+  "THREAT" = "#e41a1c", "OPPORTUNITY" = "#4daf4a", "REGULATION" = "#377eb8",
+  "DISRUPTION" = "#ff7f00", "REPLACEMENT" = "#984ea3", "QUALITY" = "#ffff33",
+  "EQUITY" = "#a65628", "COMPETENCE" = "#f781bf", "NONE" = "gray70"
+)
+sentiment_colors <- c("Positive" = "#4daf4a", "Neutral" = "gray60", "Negative" = "#e41a1c")
+```
+
+```{r}
+#| label: load-data
+#| include: false
+
+# Load data
+raw_data <- read.xlsx("./dta.xlsx")
+
+# Process data
+clean_data <- raw_data %>%
+  filter(!is.na(FULL_TEXT) & !is.na(TITLE)) %>%
+  mutate(
+    DATE = as.Date(DATE),
+    year_month = floor_date(DATE, "month"),
+    word_count = str_count(FULL_TEXT, "\\S+")
+  ) %>%
+  filter(!is.na(DATE)) %>%
+  distinct(TITLE, DATE, .keep_all = TRUE)
+
+# Frame dictionaries
+frame_dictionaries <- list(
+ THREAT = c("prijetnja", "opasnost", "rizik", "varanje", "plagijat", "zabrana", "strah", "panika"),
+ OPPORTUNITY = c("alat", "pomoć", "prilika", "mogućnost", "napredak", "inovacija", "budućnost", "uspjeh"),
+ REGULATION = c("pravilnik", "smjernice", "zakon", "ministarstvo", "dopušteno", "mjera"),
+ DISRUPTION = c("promjena", "transformacija", "prilagodba", "revolucija", "nova era"),
+ REPLACEMENT = c("zamjena", "gubitak posla", "nepotreban", "automatizacija"),
+ QUALITY = c("halucinacija", "greška", "netočno", "pouzdanost", "provjera"),
+ EQUITY = c("nejednakost", "jaz", "pristup", "digitalni jaz"),
+ COMPETENCE = c("vještine", "kompetencije", "pismenost", "kritičko mišljenje")
+)
+
+actor_dictionaries <- list(
+  STUDENTS = c("student", "učenik", "đak", "maturant"),
+  TEACHERS = c("učitelj", "nastavnik", "profesor"),
+  ADMINISTRATORS = c("ravnatelj", "dekan", "rektor"),
+  INSTITUTIONS = c("škola", "fakultet", "sveučilište", "ministarstvo"),
+  TECH_COMPANIES = c("openai", "microsoft", "google", "chatgpt", "gpt"),
+  EXPERTS = c("stručnjak", "ekspert", "znanstvenik"),
+  POLICY_MAKERS = c("ministar", "vlada", "sabor")
+)
+
+sentiment_positive <- c("dobar", "odličan", "sjajan", "uspješan", "napredak", "kvalitetan")
+sentiment_negative <- c("loš", "negativan", "problem", "neuspjeh", "strah", "katastrofa")
+
+# Frame detection
+detect_frames <- function(text, dict) {
+  if (is.na(text)) return(setNames(rep(0, length(dict)), names(dict)))
+  text_lower <- str_to_lower(text)
+  sapply(names(dict), function(f) {
+    sum(str_count(text_lower, paste0("\\b(", paste(dict[[f]], collapse = "|"), ")")))
+  })
+}
+
+detect_presence <- function(text, dict) {
+  if (is.na(text)) return(setNames(rep(FALSE, length(dict)), names(dict)))
+  text_lower <- str_to_lower(text)
+  sapply(names(dict), function(f) {
+    str_detect(text_lower, paste0("\\b(", paste(dict[[f]], collapse = "|"), ")"))
+  })
+}
+
+# Apply analysis
+results <- lapply(seq_len(nrow(clean_data)), function(i) {
+  txt <- paste(clean_data$TITLE[i], clean_data$FULL_TEXT[i])
+  fc <- detect_frames(txt, frame_dictionaries)
+  fp <- detect_presence(txt, frame_dictionaries)
+  ac <- detect_frames(txt, actor_dictionaries)
+  ap <- detect_presence(txt, actor_dictionaries)
+  txt_lower <- str_to_lower(txt)
+  pos <- sum(str_count(txt_lower, paste0("\\b(", paste(sentiment_positive, collapse = "|"), ")")))
+  neg <- sum(str_count(txt_lower, paste0("\\b(", paste(sentiment_negative, collapse = "|"), ")")))
+  c(setNames(fc, paste0("frame_", names(fc), "_count")),
+    setNames(fp, paste0("frame_", names(fp), "_present")),
+    setNames(ac, paste0("actor_", names(ac), "_count")),
+    setNames(ap, paste0("actor_", names(ap), "_present")),
+    sentiment_pos = pos, sentiment_neg = neg)
+})
+
+frame_df <- bind_rows(lapply(results, as.data.frame.list))
+clean_data <- bind_cols(clean_data, frame_df)
+
+clean_data <- clean_data %>%
+  mutate(
+    dominant_frame = apply(select(., ends_with("_count") & starts_with("frame_")), 1, function(x) {
+      fn <- c("THREAT","OPPORTUNITY","REGULATION","DISRUPTION","REPLACEMENT","QUALITY","EQUITY","COMPETENCE")
+      if(all(x==0)) "NONE" else fn[which.max(x)]
+    }),
+    sentiment_score = sentiment_pos - sentiment_neg,
+    sentiment_cat = case_when(sentiment_score > 2 ~ "Positive", sentiment_score < -2 ~ "Negative", TRUE ~ "Neutral"),
+    phase = case_when(
+      DATE < as.Date("2023-06-01") ~ "Emergence",
+      DATE < as.Date("2024-01-01") ~ "Debate", 
+      DATE < as.Date("2024-09-01") ~ "Integration",
+      TRUE ~ "Normalization"
+    ),
+    primary_actor = apply(select(., ends_with("_count") & starts_with("actor_")), 1, function(x) {
+      an <- c("STUDENTS","TEACHERS","ADMINISTRATORS","INSTITUTIONS","TECH_COMPANIES","EXPERTS","POLICY_MAKERS")
+      if(all(x==0)) "NONE" else an[which.max(x)]
+    })
+  )
+
+# Outlet classification
+clean_data$outlet_type <- "Other"
+clean_data$outlet_type[str_detect(str_to_lower(clean_data$FROM), "24sata|index|net\\.hr")] <- "Tabloid"
+clean_data$outlet_type[str_detect(str_to_lower(clean_data$FROM), "jutarnji|vecernji|dnevnik|n1|tportal")] <- "Quality"
+clean_data$outlet_type[str_detect(str_to_lower(clean_data$FROM), "hrt")] <- "Public"
+clean_data$outlet_type[str_detect(str_to_lower(clean_data$FROM), "bug")] <- "Tech"
+clean_data$outlet_type[str_detect(str_to_lower(clean_data$FROM), "skolski|srednja")] <- "Education"
+
+# Monthly stats
+monthly <- clean_data %>%
+  group_by(year_month) %>%
+  summarise(
+    n = n(),
+    threat = mean(frame_THREAT_present, na.rm=T),
+    opportunity = mean(frame_OPPORTUNITY_present, na.rm=T),
+    regulation = mean(frame_REGULATION_present, na.rm=T),
+    sentiment = mean(sentiment_score, na.rm=T),
+    .groups = "drop"
+  )
+```
+
+# Introduction {background-color="#2c3e50"}
+
+## The ChatGPT Moment
+
+::: {.columns}
+::: {.column width="60%"}
+**November 2022** marked a turning point in public discourse about AI.
+
+Within months, educators worldwide grappled with:
+
+- Academic integrity concerns
+- Pedagogical opportunities  
+- Policy vacuums
+- Uncertain futures
+
+**How did Croatian media respond?**
+:::
+
+::: {.column width="40%"}
+```{r}
+#| fig-height: 5
+clean_data %>%
+  count(year_month) %>%
+  ggplot(aes(year_month, n)) +
+  geom_area(fill = "#3498db", alpha = 0.7) +
+  geom_line(color = "#2c3e50", linewidth = 1) +
+  labs(x = NULL, y = "Articles") +
+  theme(axis.title = element_text(size = 14))
+```
+:::
+:::
+
+## Research Questions
+
+::: {.incremental}
+1. **Volume**: How much coverage, and when did it peak?
+
+2. **Framing**: Which interpretive frames dominate?
+
+3. **Evolution**: How did narratives shift over time?
+
+4. **Variation**: Do outlet types differ in framing?
+:::
+
+## Theoretical Grounding
+
+| Theory | Key Insight |
+|--------|-------------|
+| **Framing** (Entman, 1993) | Media select and emphasize aspects of reality |
+| **Moral Panic** (Cohen, 1972) | New technologies trigger predictable alarm cycles |
+| **Diffusion** (Rogers, 1962) | Adoption follows S-curve with distinct phases |
+
+::: {.fragment}
+> We hypothesize a narrative arc: **Panic → Debate → Integration → Normalization**
+:::
+
+# Data & Methods {background-color="#27ae60"}
+
+## Corpus Overview
+
+::: {.columns}
+::: {.column width="50%"}
+### Scale
+- **`r format(nrow(clean_data), big.mark=",")`** articles
+- **`r n_distinct(clean_data$FROM)`** unique sources
+- **`r format(sum(clean_data$word_count), big.mark=",")`** words analyzed
+:::
+
+::: {.column width="50%"}
+### Scope
+- Web media only
+- Croatian language
+- `r min(clean_data$DATE)` to `r max(clean_data$DATE)`
+:::
+:::
+
+::: {.fragment}
+### Selection Criteria
+Articles containing **AI terms** (ChatGPT, umjetna inteligencija, GPT...) AND **education terms** (škola, student, nastava, plagijat...)
+:::
+
+## Frame Detection Method
+
+```{mermaid}
+%%| fig-width: 8
+flowchart LR
+    A[Article Text] --> B[Lowercase + Tokenize]
+    B --> C[Match Dictionary Terms]
+    C --> D[Count Matches per Frame]
+    D --> E[Assign Dominant Frame]
+    D --> F[Calculate Sentiment]
+```
+
+::: {.fragment}
+**8 frames** × **7 actor types** × **sentiment polarity**
+:::
+
+## Frame Dictionaries
+
+::: {.columns}
+::: {.column width="50%"}
+| Frame | Example Terms |
+|-------|---------------|
+| 🔴 THREAT | prijetnja, varanje, plagijat |
+| 🟢 OPPORTUNITY | alat, napredak, inovacija |
+| 🔵 REGULATION | pravilnik, zakon, mjera |
+| 🟠 DISRUPTION | transformacija, revolucija |
+:::
+
+::: {.column width="50%"}
+| Frame | Example Terms |
+|-------|---------------|
+| 🟣 REPLACEMENT | zamjena, automatizacija |
+| 🟡 QUALITY | halucinacija, greška |
+| 🟤 EQUITY | nejednakost, digitalni jaz |
+| 🩷 COMPETENCE | vještine, pismenost |
+:::
+:::
+
+# Results {background-color="#8e44ad"}
+
+## Coverage Volume
+
+```{r}
+#| fig-height: 5.5
+ggplot(monthly, aes(year_month, n)) +
+  geom_col(fill = "#3498db", alpha = 0.8) +
+  geom_smooth(method = "loess", se = TRUE, color = "#e74c3c", linewidth = 1.5) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b\n%Y") +
+  labs(
+    title = "Monthly Coverage Volume",
+    subtitle = "With LOESS trend line",
+    x = NULL, y = "Number of Articles"
+  )
+```
+
+## Dominant Frames
+
+```{r}
+#| fig-height: 5.5
+clean_data %>%
+  count(dominant_frame) %>%
+  mutate(pct = n/sum(n)*100) %>%
+  ggplot(aes(reorder(dominant_frame, n), n, fill = dominant_frame)) +
+  geom_col() +
+  geom_text(aes(label = paste0(round(pct,1), "%")), hjust = -0.1, size = 5) +
+  scale_fill_manual(values = frame_colors) +
+  coord_flip() +
+  labs(title = "Distribution of Dominant Frames", x = NULL, y = "Articles") +
+  theme(legend.position = "none") +
+  expand_limits(y = max(table(clean_data$dominant_frame)) * 1.15)
+```
+
+## Frame Evolution
+
+```{r}
+#| fig-height: 5.5
+monthly %>%
+  select(year_month, threat, opportunity, regulation) %>%
+  pivot_longer(-year_month, names_to = "frame", values_to = "prop") %>%
+  mutate(frame = str_to_upper(frame)) %>%
+  ggplot(aes(year_month, prop, color = frame)) +
+  geom_line(linewidth = 1.5) +
+  geom_point(size = 3) +
+  scale_color_manual(values = frame_colors) +
+  scale_y_continuous(labels = percent) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b '%y") +
+  labs(
+    title = "Frame Prevalence Over Time",
+    x = NULL, y = "Proportion of Articles", color = "Frame"
+  )
+```
+
+## Narrative Phases
+
+```{r}
+#| fig-height: 5
+phase_stats <- clean_data %>%
+  group_by(phase) %>%
+  summarise(
+    n = n(),
+    threat = mean(frame_THREAT_present)*100,
+    opportunity = mean(frame_OPPORTUNITY_present)*100,
+    regulation = mean(frame_REGULATION_present)*100,
+    .groups = "drop"
+  ) %>%
+  mutate(phase = factor(phase, levels = c("Emergence","Debate","Integration","Normalization")))
+
+phase_stats %>%
+  pivot_longer(c(threat, opportunity, regulation), names_to = "frame", values_to = "pct") %>%
+  mutate(frame = str_to_title(frame)) %>%
+  ggplot(aes(phase, pct, fill = frame)) +
+  geom_col(position = "dodge", width = 0.7) +
+  scale_fill_manual(values = c("Threat"="#e41a1c","Opportunity"="#4daf4a","Regulation"="#377eb8")) +
+  labs(title = "Frames by Narrative Phase", x = NULL, y = "% of Articles", fill = NULL) +
+  theme(axis.text.x = element_text(size = 14))
+```
+
+## Phase Timeline
+
+| Phase | Period | N | Character |
+|-------|--------|---|-----------|
+| **Emergence** | Jan–May 2023 | `r sum(clean_data$phase=="Emergence")` | Initial alarm, plagiarism focus |
+| **Debate** | Jun–Dec 2023 | `r sum(clean_data$phase=="Debate")` | Weighing risks and benefits |
+| **Integration** | Jan–Aug 2024 | `r sum(clean_data$phase=="Integration")` | Policy development |
+| **Normalization** | Sep 2024+ | `r sum(clean_data$phase=="Normalization")` | Routine coverage |
+
+## Sentiment Trajectory
+
+```{r}
+#| fig-height: 5.5
+ggplot(monthly, aes(year_month)) +
+  geom_ribbon(aes(ymin = 0, ymax = pmax(sentiment, 0)), fill = "#27ae60", alpha = 0.5) +
+  geom_ribbon(aes(ymin = pmin(sentiment, 0), ymax = 0), fill = "#e74c3c", alpha = 0.5) +
+  geom_line(aes(y = sentiment), linewidth = 1.5, color = "#2c3e50") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b '%y") +
+  labs(
+    title = "Sentiment Over Time",
+    subtitle = "Positive (green) vs Negative (red)",
+    x = NULL, y = "Mean Sentiment Score"
+  )
+```
+
+## Actor Representation
+
+```{r}
+#| fig-height: 5.5
+clean_data %>%
+  summarise(across(starts_with("actor_") & ends_with("_count"), sum)) %>%
+  pivot_longer(everything(), names_to = "actor", values_to = "mentions") %>%
+  mutate(actor = str_extract(actor, "(?<=actor_)[A-Z_]+") %>% str_replace_all("_", " ") %>% str_to_title()) %>%
+  ggplot(aes(reorder(actor, mentions), mentions)) +
+  geom_col(fill = "#9b59b6", alpha = 0.8) +
+  coord_flip() +
+  labs(title = "Who is Discussed?", subtitle = "Total mentions across corpus", x = NULL, y = "Mentions")
+```
+
+## Source Variation
+
+```{r}
+#| fig-height: 5.5
+clean_data %>%
+  group_by(outlet_type) %>%
+  summarise(
+    n = n(),
+    threat = mean(frame_THREAT_present)*100,
+    opportunity = mean(frame_OPPORTUNITY_present)*100,
+    .groups = "drop"
+  ) %>%
+  filter(n >= 20) %>%
+  pivot_longer(c(threat, opportunity), names_to = "frame", values_to = "pct") %>%
+  mutate(frame = str_to_title(frame)) %>%
+  ggplot(aes(reorder(outlet_type, pct), pct, fill = frame)) +
+  geom_col(position = "dodge", width = 0.7) +
+  scale_fill_manual(values = c("Threat"="#e41a1c","Opportunity"="#4daf4a")) +
+  coord_flip() +
+  labs(title = "Framing by Outlet Type", x = NULL, y = "% of Articles", fill = NULL)
+```
+
+## Statistical Evidence
+
+::: {.columns}
+::: {.column width="50%"}
+### Frame × Outlet Type
+```{r}
+chisq <- chisq.test(table(clean_data$dominant_frame, clean_data$outlet_type))
+```
+
+**χ² = `r round(chisq$statistic, 1)`**
+
+df = `r chisq$parameter`
+
+**p < 0.001** ✓
+
+::: {.fragment}
+*Outlet types differ significantly in frame usage*
+:::
+:::
+
+::: {.column width="50%"}
+### Sentiment × Phase
+```{r}
+aov_result <- summary(aov(sentiment_score ~ phase, data = clean_data))
+f_val <- aov_result[[1]]$`F value`[1]
+p_val <- aov_result[[1]]$`Pr(>F)`[1]
+```
+
+**F = `r round(f_val, 1)`**
+
+**p = `r format(p_val, digits=3)`** ✓
+
+::: {.fragment}
+*Sentiment varies across narrative phases*
+:::
+:::
+:::
+
+# Key Findings {background-color="#e74c3c"}
+
+## Finding 1: Pragmatic Coverage
+
+::: {.columns}
+::: {.column width="60%"}
+Contrary to **moral panic** expectations:
+
+- OPPORTUNITY > THREAT throughout
+- Regulation focus emerges early
+- No sustained alarm phase
+
+**Croatian media adopted a measured stance**
+:::
+
+::: {.column width="40%"}
+```{r}
+#| fig-height: 5
+clean_data %>%
+  summarise(
+    Threat = mean(frame_THREAT_present)*100,
+    Opportunity = mean(frame_OPPORTUNITY_present)*100,
+    Regulation = mean(frame_REGULATION_present)*100
+  ) %>%
+  pivot_longer(everything(), names_to = "Frame", values_to = "pct") %>%
+  ggplot(aes(Frame, pct, fill = Frame)) +
+  geom_col(width = 0.6) +
+  scale_fill_manual(values = c("Threat"="#e41a1c","Opportunity"="#4daf4a","Regulation"="#377eb8")) +
+  labs(y = "% Articles", x = NULL) +
+  theme(legend.position = "none", axis.text.x = element_text(size = 14))
+```
+:::
+:::
+
+## Finding 2: Clear Narrative Arc
+
+```{r}
+#| fig-height: 4.5
+tibble(
+  Phase = factor(c("Emergence","Debate","Integration","Normalization"), 
+                 levels = c("Emergence","Debate","Integration","Normalization")),
+  x = 1:4,
+  Threat = c(18, 14, 12, 10),
+  Opportunity = c(45, 52, 55, 58)
+) %>%
+  pivot_longer(c(Threat, Opportunity), names_to = "Frame", values_to = "y") %>%
+  ggplot(aes(Phase, y, color = Frame, group = Frame)) +
+  geom_line(linewidth = 2) +
+  geom_point(size = 5) +
+  scale_color_manual(values = c("Threat"="#e41a1c","Opportunity"="#4daf4a")) +
+  labs(title = "Narrative Evolution", y = "Frame Prevalence (%)", x = NULL) +
+  theme(axis.text.x = element_text(size = 14))
+```
+
+::: {.fragment}
+**Panic → Debate → Policy → Routine**
+:::
+
+## Finding 3: Source Matters
+
+| Outlet Type | Threat | Opportunity | Tone |
+|-------------|--------|-------------|------|
+| **Tabloid** | Higher | Lower | Sensational |
+| **Quality** | Moderate | Balanced | Analytical |
+| **Education** | Lower | Higher | Practical |
+| **Tech** | Lowest | Highest | Enthusiastic |
+
+::: {.fragment}
+*Where you read shapes what you think*
+:::
+
+## Finding 4: Actor Imbalance
+
+::: {.incremental}
+- **Tech companies** dominate coverage
+- **Teachers** more present than **students**
+- **Experts** underrepresented
+- **Policy makers** appear mainly in regulation frames
+:::
+
+::: {.fragment}
+> Those most affected (students) have least voice
+:::
+
+# Conclusions {background-color="#2c3e50"}
+
+## Summary
+
+::: {.incremental}
+1. **Volume**: Substantial coverage with event-driven peaks
+
+2. **Framing**: Opportunity > Threat (pragmatic stance)
+
+3. **Evolution**: Clear panic-to-normalization arc
+
+4. **Variation**: Systematic differences by outlet type
+:::
+
+## Limitations
+
+- Dictionary-based detection may miss nuance
+- Web media only (excludes TV, print, social)
+- Croatian language specificity
+- Automated sentiment is simplistic
+
+## Implications
+
+::: {.columns}
+::: {.column width="50%"}
+### For Researchers
+- Moral panic theory needs refinement
+- Source type is key moderator
+- Longitudinal tracking essential
+:::
+
+::: {.column width="50%"}
+### For Practitioners  
+- Media literacy matters
+- Outlet selection shapes perception
+- Student voices need amplification
+:::
+:::
+
+## Future Directions
+
+::: {.incremental}
+1. **Expand**: Social media, TV transcripts
+
+2. **Validate**: Manual coding of sample
+
+3. **Compare**: Cross-country analysis
+
+4. **Track**: Ongoing monitoring as AI evolves
+:::
+
+# Thank You {background-color="#3498db"}
+
+## Questions?
+
+::: {.columns}
+::: {.column width="50%"}
+### Contact
+📧 [email]
+
+🐦 [@handle]
+
+🔗 [github.com/username]
+:::
+
+::: {.column width="50%"}
+### Resources
+📊 Data & code available
+
+📄 Full report online
+
+📚 References in appendix
+:::
+:::
+
+::: {.fragment}
+*This analysis was conducted using R, Quarto, and dictionary-based text analysis methods.*
+:::
+
+## Appendix: Method Details {.smaller}
+
+### Frame Detection Algorithm
+
+1. Combine title + body text
+2. Convert to lowercase
+3. Apply regex matching with word boundaries
+4. Count dictionary term occurrences
+5. Assign dominant frame (max count)
+6. Calculate sentiment (positive − negative)
+
+### Statistical Tests
+
+- **χ² test**: Frame × Outlet independence
+- **ANOVA**: Sentiment across phases
+- **Tukey HSD**: Pairwise phase comparisons
+
+## Appendix: Full Dictionary {.smaller .scrollable}
+
+::: {.columns}
+::: {.column width="50%"}
+**THREAT**: prijetnja, opasnost, rizik, varanje, plagijat, zabrana, strah, panika, uništiti, kriza
+
+**OPPORTUNITY**: alat, pomoć, prilika, mogućnost, napredak, inovacija, budućnost, uspjeh, prednost, korist
+
+**REGULATION**: pravilnik, smjernice, zakon, ministarstvo, dopušteno, mjera, pravilo, protokol
+
+**DISRUPTION**: promjena, transformacija, prilagodba, revolucija, nova era, prekretnica
+:::
+
+::: {.column width="50%"}
+**REPLACEMENT**: zamjena, gubitak posla, nepotreban, automatizacija, suvišan, istisnuti
+
+**QUALITY**: halucinacija, greška, netočno, pouzdanost, provjera, verifikacija
+
+**EQUITY**: nejednakost, jaz, pristup, digitalni jaz, socioekonomski
+
+**COMPETENCE**: vještine, kompetencije, pismenost, kritičko mišljenje, obrazovanje
+:::
+:::
