@@ -77,7 +77,7 @@ source("AI_Education_Media_Analysis_Complete.R")
 
 ```bibtex
 @misc{ai_croatian_education_2025,
-  author       = {Author Name},
+  author       = {Siic, Trbusic, Males},
   title        = {Generative AI in Croatian Education: A Media Frame Analysis (2023-2025)},
   year         = {2025},
   publisher    = {GitHub},

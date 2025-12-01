@@ -1,7 +1,7 @@
 ---
 title: "Generative AI in Croatian Education"
 subtitle: "A Media Frame Analysis (2023–2025)"
-author: "Lux"
+author: "Media Analysis Research"
 date: today
 format:
   html:
@@ -39,6 +39,13 @@ bibliography: references.bib
 ```{r}
 #| label: setup
 #| include: false
+
+# ==============================================================================
+# CONFIGURATION - MODIFY THIS PATH TO YOUR DATA FILE
+# ==============================================================================
+
+# Set the path to your data file (use forward slashes or double backslashes)
+DATA_FILE_PATH <- "./dta.xlsx"
 
 # ==============================================================================
 # SETUP AND CONFIGURATION
@@ -144,8 +151,43 @@ Our analysis draws on:
 ```{r}
 #| label: load-data
 
+# ==============================================================================
+# DATA LOADING
+# ==============================================================================
+
+# Use the configured path, or try to find the file
+if (exists("DATA_FILE_PATH") && file.exists(DATA_FILE_PATH)) {
+  data_file <- DATA_FILE_PATH
+} else {
+  # Try multiple possible locations for the data file
+  possible_paths <- c(
+    "./dta.xlsx",
+    "../dta.xlsx", 
+    "dta.xlsx",
+    file.path(getwd(), "dta.xlsx"),
+    "D:/LUKA/Academic/HKS/Clanci/AI u obrazovanju/dta.xlsx"
+  )
+  
+  data_file <- NULL
+  for (path in possible_paths) {
+    if (file.exists(path)) {
+      data_file <- path
+      break
+    }
+  }
+  
+  if (is.null(data_file)) {
+    cat("Current working directory:", getwd(), "\n")
+    cat("Files in current directory:\n")
+    print(list.files(pattern = "\\.xlsx$", recursive = TRUE))
+    stop("Could not find dta.xlsx. Set DATA_FILE_PATH in the setup chunk.")
+  }
+}
+
+cat("Loading data from:", data_file, "\n")
+
 # Load the pre-processed data
-raw_data <- read.xlsx("./dta.xlsx")
+raw_data <- read.xlsx(data_file)
 
 cat("Dataset loaded successfully\n")
 cat("Total articles:", format(nrow(raw_data), big.mark = ","), "\n")
@@ -186,7 +228,8 @@ cat("Date range:", as.character(min(clean_data$DATE)), "to", as.character(max(cl
 
 ## Frame Dictionaries
 
-We developed Croatian-language dictionaries for eight interpretive frames:
+Frame detection employs a dictionary-based approach, where each frame is operationalized through a curated set of Croatian-language keywords. For each article, we count occurrences of dictionary terms in the combined title and body text. An article is coded as containing a frame if at least one dictionary term is present. The *dominant frame* is determined by the highest keyword count across all eight frames.
+
 ```{r}
 #| label: frame-dictionaries
 
@@ -289,6 +332,8 @@ cat("Actor dictionaries created:", length(actor_dictionaries), "actor types\n")
 
 ## Frame Detection
 
+The detection algorithm iterates through each article, applying regular expression matching with word boundaries (`\b`) to avoid partial matches. Sentiment is computed as a simple difference score: *positive word count − negative word count*. Articles with scores above +2 are classified as positive, below −2 as negative, and the remainder as neutral. This threshold-based approach provides robustness against minor fluctuations while capturing meaningful sentiment differences.
+
 ```{r}
 #| label: frame-detection
 
@@ -387,6 +432,8 @@ cat("Articles with at least one frame:", sum(clean_data$frame_count > 0), "\n")
 
 ## Coverage Overview
 
+This section presents descriptive statistics characterizing the corpus. The percentage of articles with at least one detected frame indicates dictionary coverage—values below 70% may suggest dictionary expansion is needed.
+
 ### Dataset Summary
 
 ```{r}
@@ -419,6 +466,8 @@ kable(summary_stats, align = c("l", "r")) %>%
 
 ### Temporal Distribution
 
+The bar chart displays monthly article counts, with a LOESS smoothing curve (red) indicating the underlying trend. Peaks correspond to external events (e.g., ChatGPT launch, academic calendar milestones). The smoothing bandwidth is automatically selected to balance noise reduction with trend fidelity.
+
 ```{r}
 #| label: fig-volume
 #| fig-cap: "Monthly Coverage Volume"
@@ -449,6 +498,8 @@ ggplot(monthly_stats, aes(x = year_month, y = n_articles)) +
 
 ### Day of Week Patterns
 
+Publication timing reveals editorial routines. Weekday concentration suggests news-driven coverage, while weekend spikes may indicate feature or opinion pieces. Percentages sum to 100% across all days.
+
 ```{r}
 #| label: fig-dow
 #| fig-cap: "Publication Patterns by Day of Week"
@@ -474,7 +525,11 @@ ggplot(dow_stats, aes(x = day_of_week, y = n)) +
 
 ## Frame Analysis
 
+Frame analysis quantifies how media construct meaning around AI in education. Each article receives a dominant frame assignment based on maximum keyword frequency. Articles with zero matches across all dictionaries are coded as "NONE."
+
 ### Dominant Frames
+
+The horizontal bar chart ranks frames by article count. Percentages indicate each frame's share of total coverage. A high "NONE" proportion signals potential dictionary gaps or genuinely frame-neutral content.
 
 ```{r}
 #| label: fig-frame-dist
@@ -505,6 +560,8 @@ ggplot(frame_dist, aes(x = reorder(dominant_frame, n), y = n, fill = dominant_fr
 
 ### Frame Evolution Over Time
 
+This time series tracks the *proportion* of articles containing each frame per month (not mutually exclusive—articles may contain multiple frames). Rising lines indicate increasing frame salience; convergence suggests narrative consolidation.
+
 ```{r}
 #| label: fig-frame-evolution
 #| fig-cap: "Evolution of Media Frames Over Time"
@@ -531,6 +588,8 @@ ggplot(frame_evolution, aes(x = year_month, y = proportion, color = frame)) +
 ```
 
 ### Frame Co-occurrence
+
+The heatmap displays normalized co-occurrence frequencies. Values are row-normalized by diagonal (self-occurrence), so each cell represents: *P(Frame₂ | Frame₁)*. Values approaching 1.0 indicate frames that frequently appear together; the diagonal is always 1.0 by definition.
 
 ```{r}
 #| label: fig-frame-cooccur
@@ -572,6 +631,8 @@ if (ncol(frame_cols) > 1) {
 ---
 
 ## Narrative Phases
+
+We partition the study period into four theoretically-motivated phases based on moral panic and diffusion theory. Phase boundaries are set *a priori* based on expected narrative transitions: emergence (initial reaction), debate (contested meaning), integration (policy response), and normalization (routinization). The grouped bar chart enables cross-phase comparison of frame prevalence.
 
 ```{r}
 #| label: fig-phases
@@ -632,6 +693,8 @@ kable(phase_table) %>%
 
 ## Sentiment Analysis
 
+Sentiment provides an aggregate valence measure independent of specific frames. The trajectory plot shows monthly mean sentiment; green shading indicates positive territory, red indicates negative. Zero represents neutral balance between positive and negative lexicon matches.
+
 ```{r}
 #| label: fig-sentiment
 #| fig-cap: "Sentiment Trajectory Over Time"
@@ -677,6 +740,8 @@ ggplot(sentiment_dist, aes(x = sentiment_category, y = n, fill = sentiment_categ
 
 ## Actor Representation
 
+Actor analysis identifies *who* is discussed in coverage. The primary actor is assigned based on highest mention count per article. This reveals whose perspectives dominate discourse and potential imbalances in voice allocation.
+
 ```{r}
 #| label: fig-actors
 #| fig-cap: "Actor Representation in Coverage"
@@ -707,6 +772,8 @@ ggplot(actor_frequency, aes(x = reorder(actor, value), y = value)) +
     y = "Total Mentions"
   )
 ```
+
+The actor-frame association chart shows which frames co-occur with each primary actor. This reveals differential framing: for instance, if policy makers are more frequently associated with regulation frames, this suggests their media presence centers on governance rather than opportunity or threat narratives.
 
 ```{r}
 #| label: fig-actor-frame
@@ -746,6 +813,8 @@ ggplot(actor_frame_long, aes(x = reorder(primary_actor, percentage), y = percent
 ---
 
 ## Source Analysis
+
+Outlet classification enables comparison across media types. Sources are categorized via pattern matching on domain names into tabloid, quality, regional, public, tech, education, and business press. The "Other" category captures unclassified sources. Frame prevalence differences across outlet types indicate systematic variation in news construction.
 
 ```{r}
 #| label: outlet-classification
@@ -841,7 +910,11 @@ kable(outlet_summary) %>%
 
 ## Statistical Tests
 
+Statistical tests provide inferential support for observed patterns. We employ non-parametric and parametric tests appropriate to variable types.
+
 ### Frame-Outlet Association
+
+A chi-square test of independence assesses whether dominant frame distribution varies significantly across outlet types. A significant result (p < 0.05) indicates that outlet type and frame usage are not independent—different media types systematically prefer different frames. Note: cells with expected counts below 5 may inflate Type I error.
 
 ```{r}
 #| label: stat-chisq
@@ -860,6 +933,8 @@ if (chisq_result$p.value < 0.05) {
 ```
 
 ### Sentiment by Phase
+
+One-way ANOVA tests whether mean sentiment differs significantly across narrative phases. A significant F-statistic indicates at least one phase differs from others. Tukey's HSD post-hoc test identifies specific pairwise differences while controlling family-wise error rate. Positive differences indicate the first-named phase has higher sentiment than the second.
 
 ```{r}
 #| label: stat-anova
