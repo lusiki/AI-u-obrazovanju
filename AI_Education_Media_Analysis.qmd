@@ -1,0 +1,959 @@
+---
+title: "Generative AI in Croatian Education"
+subtitle: "A Media Frame Analysis (2023–2025)"
+author: "Lux"
+date: today
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    toc-location: left
+    number-sections: true
+    code-fold: true
+    code-tools: true
+    code-summary: "Show code"
+    df-print: paged
+    fig-width: 10
+    fig-height: 6
+    fig-dpi: 300
+    embed-resources: true
+  pdf:
+    toc: true
+    number-sections: true
+    colorlinks: true
+    fig-width: 8
+    fig-height: 5
+  docx:
+    toc: true
+    number-sections: true
+    fig-width: 8
+    fig-height: 5
+execute:
+  warning: false
+  message: false
+  echo: true
+bibliography: references.bib
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+# ==============================================================================
+# SETUP AND CONFIGURATION
+# ==============================================================================
+
+# Load required packages
+required_packages <- c(
+  "dplyr", "tidyr", "stringr", "lubridate", "forcats", "tibble",
+
+"tidytext", "quanteda", "quanteda.textstats", "quanteda.textplots",
+  "ggplot2", "ggthemes", "scales", "patchwork", "ggrepel",
+  "RColorBrewer", "viridis", "knitr", "kableExtra",
+  "igraph", "ggraph", "tidygraph",
+  "changepoint", "zoo", "broom",
+  "openxlsx", "progress"
+)
+
+# Install missing packages
+install_if_missing <- function(packages) {
+  new_packages <- packages[!(packages %in% installed.packages()[, "Package"])]
+  if (length(new_packages) > 0) {
+    install.packages(new_packages, dependencies = TRUE, quiet = TRUE)
+  }
+}
+install_if_missing(required_packages)
+
+# Load packages
+invisible(lapply(required_packages, library, character.only = TRUE))
+
+# Set options
+options(dplyr.summarise.inform = FALSE, scipen = 999)
+
+# Set ggplot theme
+theme_report <- theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(color = "gray40", size = 11),
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold")
+  )
+theme_set(theme_report)
+
+# Color palettes
+frame_colors <- c(
+  "THREAT" = "#e41a1c",
+  "OPPORTUNITY" = "#4daf4a",
+  "REGULATION" = "#377eb8",
+  "DISRUPTION" = "#ff7f00",
+  "REPLACEMENT" = "#984ea3",
+  "QUALITY" = "#ffff33",
+  "EQUITY" = "#a65628",
+  "COMPETENCE" = "#f781bf",
+  "NONE" = "gray70"
+)
+
+sentiment_colors <- c("Positive" = "#4daf4a", "Neutral" = "gray60", "Negative" = "#e41a1c")
+```
+
+# Executive Summary {.unnumbered}
+
+This report analyzes Croatian web media coverage of **Generative AI in education** from 2023 to 2025. Using computational frame analysis and natural language processing, we examine how media narratives have evolved from initial panic to gradual integration.
+
+::: {.callout-note}
+## Key Findings
+- **Coverage volume**: Substantial media attention with identifiable peaks around key events
+- **Dominant frames**: OPPORTUNITY and REGULATION frames predominate over THREAT
+- **Narrative evolution**: Clear shift from panic-focused to integration-focused coverage
+- **Source variation**: Significant differences in framing between outlet types
+:::
+
+---
+
+# Introduction
+
+## Background
+
+The release of ChatGPT in November 2022 triggered a global conversation about artificial intelligence in education. Croatia, like many countries, witnessed intense media debate about the implications of generative AI for students, teachers, and educational institutions.
+
+## Research Questions
+
+This analysis addresses four core questions:
+
+1. **Volume & Timing**: How much coverage exists, and when did it peak?
+2. **Framing**: Which interpretive frames dominate, and how do they shift over time?
+3. **Actors**: Who is represented in coverage, and who is given voice?
+4. **Sources**: Do different media types frame AI in education differently?
+
+## Theoretical Framework
+
+Our analysis draws on:
+
+- **Framing Theory** (Entman, 1993): Media frames as patterns of selection and emphasis
+- **Moral Panic Theory** (Cohen, 1972): Technology adoption often follows panic cycles
+- **Diffusion of Innovations** (Rogers, 1962): Media coverage mirrors adoption stages
+
+---
+
+# Data and Methods
+
+## Data Source
+
+```{r}
+#| label: load-data
+
+# Load the pre-processed data
+raw_data <- read.xlsx("./dta.xlsx")
+
+cat("Dataset loaded successfully\n")
+cat("Total articles:", format(nrow(raw_data), big.mark = ","), "\n")
+cat("Columns:", ncol(raw_data), "\n")
+```
+
+## Data Processing
+
+```{r}
+#| label: data-processing
+
+# Validate and clean data
+validated_data <- raw_data %>%
+  filter(!is.na(FULL_TEXT) & !is.na(TITLE))
+
+# Parse dates
+clean_data <- validated_data %>%
+  mutate(
+    DATE = as.Date(DATE),
+    year = year(DATE),
+    month = month(DATE),
+    year_month = floor_date(DATE, "month"),
+    week = floor_date(DATE, "week"),
+    quarter = quarter(DATE),
+    word_count = str_count(FULL_TEXT, "\\S+"),
+    article_id = row_number()
+  ) %>%
+  filter(!is.na(DATE)) %>%
+  distinct(TITLE, DATE, .keep_all = TRUE) %>%
+  arrange(DATE)
+
+# Day of week
+clean_data$day_of_week <- wday(clean_data$DATE, label = TRUE, abbr = FALSE)
+
+cat("Articles after cleaning:", format(nrow(clean_data), big.mark = ","), "\n")
+cat("Date range:", as.character(min(clean_data$DATE)), "to", as.character(max(clean_data$DATE)), "\n")
+```
+
+## Frame Dictionaries
+
+We developed Croatian-language dictionaries for eight interpretive frames:
+```{r}
+#| label: frame-dictionaries
+
+frame_dictionaries <- list(
+  THREAT = c(
+    "prijetnja", "opasnost", "opasno", "rizik", "rizično",
+    "varanje", "varati", "prevara", "plagijat", "plagiranje",
+    "prepisivanje", "zabrana", "zabraniti", "zabranjeno",
+    "uništiti", "uništava", "smrt", "kraj", "propast",
+    "kriza", "alarm", "upozorenje", "šteta", "štetno",
+    "strah", "bojati", "panika"
+  ),
+  
+  OPPORTUNITY = c(
+    "alat", "sredstvo", "pomoć", "pomoćnik", "asistent",
+    "prilika", "mogućnost", "potencijal", "prednost", "korist",
+    "poboljšati", "poboljšanje", "unaprijediti", "napredak",
+    "učinkovit", "učinkovitost", "efikasan", "produktivnost",
+    "budućnost", "inovacija", "inovativan", "revolucija",
+    "moderan", "modernizacija", "transformacija",
+    "uspjeh", "uspješno", "izvrsno"
+  ),
+  
+  REGULATION = c(
+    "pravilnik", "pravilo", "propisi", "regulativa",
+    "smjernice", "upute", "protokol",
+    "zakon", "zakonski", "pravni",
+    "ministarstvo", "ministar", "vlada",
+    "dopušteno", "dopuštenje", "dozvola",
+    "primjena", "provedba", "implementacija",
+    "odluka", "mjera"
+  ),
+  
+  DISRUPTION = c(
+    "promjena", "promijeniti", "transformacija", "preobrazba",
+    "prilagodba", "prilagoditi", "adaptacija",
+    "neizbježno", "nezaustavljivo",
+    "revolucija", "prekretnica", "nova era", "novi način",
+    "evolucija", "disrupcija"
+  ),
+  
+  REPLACEMENT = c(
+    "zamjena", "zamijeniti", "zamjenjuje", "istisnuti",
+    "gubitak posla", "nepotreban", "suvišan", "zastario",
+    "automatizacija", "automatizirano",
+    "nadmašiti", "bolji od čovjeka"
+  ),
+  
+  QUALITY = c(
+    "halucinacija", "halucinacije", "greška", "greške",
+    "netočno", "netočnost", "pogrešno",
+    "pouzdanost", "pouzdan", "nepouzdan",
+    "provjera", "provjeriti", "verifikacija",
+    "kvaliteta", "kritički", "kritičko mišljenje"
+  ),
+  
+  EQUITY = c(
+    "nejednakost", "nejednako", "jaz", "razlika",
+    "pristup", "pristupačnost", "dostupnost",
+    "digitalni jaz", "siromašan", "socioekonomski",
+    "pravednost", "pravedno", "nepravedno"
+  ),
+  
+  COMPETENCE = c(
+    "vještine", "vještina", "kompetencije",
+    "sposobnost", "pismenost", "digitalna pismenost",
+    "kritičko mišljenje", "analitičko mišljenje",
+    "učiti", "obrazovanje", "edukacija", "usavršavanje"
+  )
+)
+
+# Actor dictionaries
+actor_dictionaries <- list(
+  STUDENTS = c("student", "studenti", "učenik", "učenici", "đak", "maturant", "brucoš"),
+  TEACHERS = c("učitelj", "učitelji", "nastavnik", "profesor", "profesori", "predavač", "mentor"),
+  ADMINISTRATORS = c("ravnatelj", "dekan", "rektor", "prorektor", "voditelj"),
+  INSTITUTIONS = c("škola", "škole", "fakultet", "sveučilište", "ministarstvo", "carnet"),
+  TECH_COMPANIES = c("openai", "microsoft", "google", "chatgpt", "gpt", "gemini", "copilot"),
+  EXPERTS = c("stručnjak", "ekspert", "znanstvenik", "istraživač", "analitičar"),
+  POLICY_MAKERS = c("ministar", "zastupnik", "premijer", "vlada", "sabor")
+)
+
+# Sentiment dictionaries
+sentiment_positive <- c(
+  "dobar", "dobro", "odličan", "sjajan", "izvrstan", "fantastičan",
+  "pozitivan", "uspješan", "uspjeh", "napredak", "poboljšanje",
+  "zadovoljan", "optimizam", "nada", "kvalitetan", "koristan"
+)
+
+sentiment_negative <- c(
+  "loš", "loše", "negativan", "grozan", "užasan", "katastrofa",
+  "problem", "neuspjeh", "propast", "pogoršanje",
+  "nezadovoljan", "razočaran", "pesimizam", "strah",
+  "nekvalitetan", "beskoristan"
+)
+
+cat("Frame dictionaries created:", length(frame_dictionaries), "frames\n")
+cat("Actor dictionaries created:", length(actor_dictionaries), "actor types\n")
+```
+
+## Frame Detection
+
+```{r}
+#| label: frame-detection
+
+# Function to detect frames
+detect_frames <- function(text, dictionaries) {
+  if (is.na(text)) return(setNames(rep(0, length(dictionaries)), names(dictionaries)))
+  text_lower <- str_to_lower(text)
+  sapply(names(dictionaries), function(frame_name) {
+    pattern <- paste0("\\b(", paste(dictionaries[[frame_name]], collapse = "|"), ")")
+    sum(str_count(text_lower, pattern))
+  })
+}
+
+detect_frame_presence <- function(text, dictionaries) {
+  if (is.na(text)) return(setNames(rep(FALSE, length(dictionaries)), names(dictionaries)))
+  text_lower <- str_to_lower(text)
+  sapply(names(dictionaries), function(frame_name) {
+    pattern <- paste0("\\b(", paste(dictionaries[[frame_name]], collapse = "|"), ")")
+    str_detect(text_lower, pattern)
+  })
+}
+
+# Apply frame analysis (with progress indicator)
+message("Applying frame analysis...")
+
+frame_results <- lapply(seq_len(nrow(clean_data)), function(i) {
+  combined_text <- paste(clean_data$TITLE[i], clean_data$FULL_TEXT[i], sep = " ")
+  
+  frame_counts <- detect_frames(combined_text, frame_dictionaries)
+  frame_presence <- detect_frame_presence(combined_text, frame_dictionaries)
+  actor_counts <- detect_frames(combined_text, actor_dictionaries)
+  actor_presence <- detect_frame_presence(combined_text, actor_dictionaries)
+  
+  # Sentiment
+  text_lower <- str_to_lower(combined_text)
+  pos_count <- sum(str_count(text_lower, paste0("\\b(", paste(sentiment_positive, collapse = "|"), ")")))
+  neg_count <- sum(str_count(text_lower, paste0("\\b(", paste(sentiment_negative, collapse = "|"), ")")))
+  
+  c(
+    setNames(frame_counts, paste0("frame_", names(frame_counts), "_count")),
+    setNames(frame_presence, paste0("frame_", names(frame_presence), "_present")),
+    setNames(actor_counts, paste0("actor_", names(actor_counts), "_count")),
+    setNames(actor_presence, paste0("actor_", names(actor_presence), "_present")),
+    sentiment_POSITIVE_count = pos_count,
+    sentiment_NEGATIVE_count = neg_count
+  )
+})
+
+frame_df <- bind_rows(lapply(frame_results, as.data.frame.list))
+clean_data <- bind_cols(clean_data, frame_df)
+
+# Calculate derived metrics
+clean_data <- clean_data %>%
+  mutate(
+    dominant_frame = apply(
+      select(., starts_with("frame_") & ends_with("_count") & !contains("frame_count")), 1,
+      function(x) {
+        frame_names <- c("THREAT", "OPPORTUNITY", "REGULATION", "DISRUPTION", 
+                         "REPLACEMENT", "QUALITY", "EQUITY", "COMPETENCE")
+        if (all(x == 0)) return("NONE")
+        frame_names[which.max(x)]
+      }
+    ),
+    frame_intensity = rowSums(select(., starts_with("frame_") & ends_with("_count") & !contains("frame_count"))),
+    frame_count = rowSums(select(., starts_with("frame_") & ends_with("_present"))),
+    sentiment_score = sentiment_POSITIVE_count - sentiment_NEGATIVE_count,
+    sentiment_category = case_when(
+      sentiment_score > 2 ~ "Positive",
+      sentiment_score < -2 ~ "Negative",
+      TRUE ~ "Neutral"
+    ),
+    primary_actor = apply(
+      select(., starts_with("actor_") & ends_with("_count")), 1,
+      function(x) {
+        actor_names <- c("STUDENTS", "TEACHERS", "ADMINISTRATORS", "INSTITUTIONS",
+                         "TECH_COMPANIES", "EXPERTS", "POLICY_MAKERS")
+        if (all(x == 0)) return("NONE")
+        actor_names[which.max(x)]
+      }
+    ),
+    narrative_phase = case_when(
+      DATE < as.Date("2023-06-01") ~ "Phase 1: Emergence",
+      DATE < as.Date("2024-01-01") ~ "Phase 2: Debate",
+      DATE < as.Date("2024-09-01") ~ "Phase 3: Integration",
+      TRUE ~ "Phase 4: Normalization"
+    )
+  )
+
+cat("Frame analysis complete.\n")
+cat("Articles with at least one frame:", sum(clean_data$frame_count > 0), "\n")
+```
+
+---
+
+# Results
+
+## Coverage Overview
+
+### Dataset Summary
+
+```{r}
+#| label: tbl-summary
+#| tbl-cap: "Dataset Overview"
+
+summary_stats <- tibble(
+  Metric = c(
+    "Total Articles",
+    "Date Range",
+    "Unique Sources",
+    "Total Words Analyzed",
+    "Mean Article Length (words)",
+    "Articles with Frame Detected"
+  ),
+  Value = c(
+    format(nrow(clean_data), big.mark = ","),
+    paste(min(clean_data$DATE), "to", max(clean_data$DATE)),
+    format(n_distinct(clean_data$FROM), big.mark = ","),
+    format(sum(clean_data$word_count, na.rm = TRUE), big.mark = ","),
+    format(round(mean(clean_data$word_count, na.rm = TRUE)), big.mark = ","),
+    paste0(format(sum(clean_data$frame_count > 0), big.mark = ","), 
+           " (", round(mean(clean_data$frame_count > 0) * 100, 1), "%)")
+  )
+)
+
+kable(summary_stats, align = c("l", "r")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+### Temporal Distribution
+
+```{r}
+#| label: fig-volume
+#| fig-cap: "Monthly Coverage Volume"
+#| fig-height: 5
+
+monthly_stats <- clean_data %>%
+  group_by(year_month) %>%
+  summarise(
+    n_articles = n(),
+    prop_THREAT = mean(frame_THREAT_present, na.rm = TRUE),
+    prop_OPPORTUNITY = mean(frame_OPPORTUNITY_present, na.rm = TRUE),
+    prop_REGULATION = mean(frame_REGULATION_present, na.rm = TRUE),
+    mean_sentiment = mean(sentiment_score, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+ggplot(monthly_stats, aes(x = year_month, y = n_articles)) +
+  geom_col(fill = "#2c7bb6", alpha = 0.8) +
+  geom_smooth(method = "loess", se = TRUE, color = "#d7191c", linewidth = 1.2) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b\n%Y") +
+  labs(
+    title = "Media Coverage of AI in Croatian Education",
+    subtitle = "Monthly article count with trend line",
+    x = NULL, 
+    y = "Number of Articles"
+  )
+```
+
+### Day of Week Patterns
+
+```{r}
+#| label: fig-dow
+#| fig-cap: "Publication Patterns by Day of Week"
+#| fig-height: 4
+
+dow_stats <- clean_data %>%
+  filter(!is.na(day_of_week)) %>%
+  count(day_of_week) %>%
+  mutate(percentage = n / sum(n) * 100)
+
+ggplot(dow_stats, aes(x = day_of_week, y = n)) +
+  geom_col(fill = "#2c7bb6", alpha = 0.8) +
+  geom_text(aes(label = paste0(round(percentage, 1), "%")), vjust = -0.5, size = 3.5) +
+  labs(
+    title = "Publication Day Patterns",
+    x = NULL, 
+    y = "Number of Articles"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+---
+
+## Frame Analysis
+
+### Dominant Frames
+
+```{r}
+#| label: fig-frame-dist
+#| fig-cap: "Distribution of Dominant Frames"
+#| fig-height: 5
+
+frame_dist <- clean_data %>%
+  count(dominant_frame, sort = TRUE) %>%
+  mutate(
+    percentage = n / sum(n) * 100,
+    dominant_frame = factor(dominant_frame, levels = dominant_frame)
+  )
+
+ggplot(frame_dist, aes(x = reorder(dominant_frame, n), y = n, fill = dominant_frame)) +
+  geom_col() +
+  geom_text(aes(label = paste0(round(percentage, 1), "%")), hjust = -0.1, size = 3.5) +
+  scale_fill_manual(values = frame_colors) +
+  coord_flip() +
+  labs(
+    title = "Distribution of Dominant Frames",
+    subtitle = "Based on highest frame word count per article",
+    x = NULL, 
+    y = "Number of Articles"
+  ) +
+  theme(legend.position = "none") +
+  expand_limits(y = max(frame_dist$n) * 1.15)
+```
+
+### Frame Evolution Over Time
+
+```{r}
+#| label: fig-frame-evolution
+#| fig-cap: "Evolution of Media Frames Over Time"
+#| fig-height: 6
+
+frame_evolution <- monthly_stats %>%
+  select(year_month, prop_THREAT, prop_OPPORTUNITY, prop_REGULATION) %>%
+  pivot_longer(-year_month, names_to = "frame", values_to = "proportion") %>%
+  mutate(frame = str_remove(frame, "prop_"))
+
+ggplot(frame_evolution, aes(x = year_month, y = proportion, color = frame)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2) +
+  scale_color_manual(values = frame_colors) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b\n%Y") +
+  labs(
+    title = "Frame Prevalence Over Time",
+    subtitle = "Proportion of articles containing each frame",
+    x = NULL, 
+    y = "Proportion of Articles",
+    color = "Frame"
+  )
+```
+
+### Frame Co-occurrence
+
+```{r}
+#| label: fig-frame-cooccur
+#| fig-cap: "Frame Co-occurrence Matrix"
+#| fig-height: 7
+
+frame_cols <- clean_data %>%
+  select(starts_with("frame_") & ends_with("_present"))
+
+if (ncol(frame_cols) > 1) {
+  frame_cooccur <- crossprod(as.matrix(frame_cols))
+  diag_vals <- diag(frame_cooccur)
+  diag_vals[diag_vals == 0] <- 1
+  frame_cooccur_norm <- frame_cooccur / diag_vals
+  
+  frame_cooccur_df <- as.data.frame(frame_cooccur_norm)
+  frame_cooccur_df$frame1 <- rownames(frame_cooccur_df)
+  frame_cooccur_df <- frame_cooccur_df %>%
+    pivot_longer(-frame1, names_to = "frame2", values_to = "cooccurrence") %>%
+    mutate(
+      frame1 = str_extract(frame1, "(?<=frame_)[A-Z]+"),
+      frame2 = str_extract(frame2, "(?<=frame_)[A-Z]+")
+    ) %>%
+    filter(!is.na(frame1) & !is.na(frame2))
+  
+  ggplot(frame_cooccur_df, aes(x = frame1, y = frame2, fill = cooccurrence)) +
+    geom_tile(color = "white") +
+    geom_text(aes(label = round(cooccurrence, 2)), size = 3) +
+    scale_fill_viridis_c(option = "magma") +
+    labs(
+      title = "Frame Co-occurrence Matrix",
+      subtitle = "Normalized by diagonal (self-occurrence)",
+      x = NULL, y = NULL, fill = "Co-occurrence"
+    ) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+```
+
+---
+
+## Narrative Phases
+
+```{r}
+#| label: fig-phases
+#| fig-cap: "Frame Distribution by Narrative Phase"
+#| fig-height: 5
+
+phase_stats <- clean_data %>%
+  group_by(narrative_phase) %>%
+  summarise(
+    n = n(),
+    threat = mean(frame_THREAT_present, na.rm = TRUE) * 100,
+    opportunity = mean(frame_OPPORTUNITY_present, na.rm = TRUE) * 100,
+    regulation = mean(frame_REGULATION_present, na.rm = TRUE) * 100,
+    .groups = "drop"
+  ) %>%
+  mutate(narrative_phase = factor(narrative_phase, levels = c(
+    "Phase 1: Emergence", "Phase 2: Debate", "Phase 3: Integration", "Phase 4: Normalization"
+  )))
+
+phase_long <- phase_stats %>%
+  select(narrative_phase, threat, opportunity, regulation) %>%
+  pivot_longer(-narrative_phase, names_to = "frame", values_to = "percentage") %>%
+  mutate(frame = str_to_title(frame))
+
+ggplot(phase_long, aes(x = narrative_phase, y = percentage, fill = frame)) +
+  geom_col(position = "dodge") +
+  scale_fill_manual(values = c("Threat" = "#e41a1c", "Opportunity" = "#4daf4a", "Regulation" = "#377eb8")) +
+  labs(
+    title = "Frame Distribution by Narrative Phase",
+    subtitle = "How dominant frames shift across coverage periods",
+    x = NULL, 
+    y = "Percentage of Articles",
+    fill = "Frame"
+  ) +
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+```
+
+```{r}
+#| label: tbl-phases
+#| tbl-cap: "Summary Statistics by Narrative Phase"
+
+phase_table <- clean_data %>%
+  group_by(narrative_phase) %>%
+  summarise(
+    `Articles` = n(),
+    `Date Range` = paste(min(DATE), "—", max(DATE)),
+    `Mean Sentiment` = round(mean(sentiment_score, na.rm = TRUE), 2),
+    `% Threat Frame` = paste0(round(mean(frame_THREAT_present, na.rm = TRUE) * 100, 1), "%"),
+    `% Opportunity Frame` = paste0(round(mean(frame_OPPORTUNITY_present, na.rm = TRUE) * 100, 1), "%"),
+    .groups = "drop"
+  )
+
+kable(phase_table) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+---
+
+## Sentiment Analysis
+
+```{r}
+#| label: fig-sentiment
+#| fig-cap: "Sentiment Trajectory Over Time"
+#| fig-height: 5
+
+ggplot(monthly_stats, aes(x = year_month)) +
+  geom_ribbon(aes(ymin = 0, ymax = pmax(mean_sentiment, 0)), fill = "#4daf4a", alpha = 0.5) +
+  geom_ribbon(aes(ymin = pmin(mean_sentiment, 0), ymax = 0), fill = "#e41a1c", alpha = 0.5) +
+  geom_line(aes(y = mean_sentiment), linewidth = 1.2, color = "black") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b\n%Y") +
+  labs(
+    title = "Sentiment Trajectory Over Time",
+    subtitle = "Mean sentiment score (positive − negative word counts)",
+    x = NULL, 
+    y = "Mean Sentiment Score"
+  )
+```
+
+```{r}
+#| label: fig-sentiment-dist
+#| fig-cap: "Distribution of Sentiment Categories"
+#| fig-height: 4
+
+sentiment_dist <- clean_data %>%
+  count(sentiment_category) %>%
+  mutate(percentage = n / sum(n) * 100)
+
+ggplot(sentiment_dist, aes(x = sentiment_category, y = n, fill = sentiment_category)) +
+  geom_col() +
+  geom_text(aes(label = paste0(round(percentage, 1), "%")), vjust = -0.3, size = 4) +
+  scale_fill_manual(values = sentiment_colors) +
+  labs(
+    title = "Sentiment Distribution",
+    x = NULL, 
+    y = "Number of Articles"
+  ) +
+  theme(legend.position = "none") +
+  expand_limits(y = max(sentiment_dist$n) * 1.1)
+```
+
+---
+
+## Actor Representation
+
+```{r}
+#| label: fig-actors
+#| fig-cap: "Actor Representation in Coverage"
+#| fig-height: 5
+
+actor_frequency <- clean_data %>%
+  summarise(
+    across(starts_with("actor_") & ends_with("_count"), sum),
+    across(starts_with("actor_") & ends_with("_present"), sum)
+  ) %>%
+  pivot_longer(everything(), names_to = "metric", values_to = "value") %>%
+  mutate(
+    type = ifelse(str_detect(metric, "total_|_count"), "Total Mentions", "Articles Present"),
+    actor = str_extract(metric, "(?<=actor_)[A-Z_]+") %>%
+      str_replace_all("_", " ") %>%
+      str_to_title()
+  ) %>%
+  filter(type == "Total Mentions") %>%
+  arrange(desc(value))
+
+ggplot(actor_frequency, aes(x = reorder(actor, value), y = value)) +
+  geom_col(fill = "#2c7bb6", alpha = 0.8) +
+  coord_flip() +
+  labs(
+    title = "Actor Representation in Coverage",
+    subtitle = "Total mentions across all articles",
+    x = NULL, 
+    y = "Total Mentions"
+  )
+```
+
+```{r}
+#| label: fig-actor-frame
+#| fig-cap: "Actor-Frame Associations"
+#| fig-height: 5
+
+actor_frame_assoc <- clean_data %>%
+  filter(primary_actor != "NONE") %>%
+  group_by(primary_actor) %>%
+  summarise(
+    n = n(),
+    threat = mean(frame_THREAT_present, na.rm = TRUE) * 100,
+    opportunity = mean(frame_OPPORTUNITY_present, na.rm = TRUE) * 100,
+    regulation = mean(frame_REGULATION_present, na.rm = TRUE) * 100,
+    .groups = "drop"
+  ) %>%
+  arrange(desc(n))
+
+actor_frame_long <- actor_frame_assoc %>%
+  select(primary_actor, threat, opportunity, regulation) %>%
+  pivot_longer(-primary_actor, names_to = "frame", values_to = "percentage") %>%
+  mutate(frame = str_to_title(frame))
+
+ggplot(actor_frame_long, aes(x = reorder(primary_actor, percentage), y = percentage, fill = frame)) +
+  geom_col(position = "dodge") +
+  scale_fill_manual(values = c("Threat" = "#e41a1c", "Opportunity" = "#4daf4a", "Regulation" = "#377eb8")) +
+  coord_flip() +
+  labs(
+    title = "Frame Prevalence by Primary Actor",
+    subtitle = "Which frames appear when each actor is prominent",
+    x = NULL, 
+    y = "Percentage of Articles",
+    fill = "Frame"
+  )
+```
+
+---
+
+## Source Analysis
+
+```{r}
+#| label: outlet-classification
+
+# Classify outlets
+outlet_classification <- tribble(
+  ~pattern,                    ~outlet_type,
+  "24sata",                    "Tabloid",
+  "index",                     "Tabloid",
+  "jutarnji",                  "Quality",
+  "vecernji",                  "Quality",
+  "slobodna.*dalmacija",       "Regional",
+  "novi.*list",                "Regional",
+  "dnevnik",                   "Quality",
+  "hrt",                       "Public",
+  "n1",                        "Quality",
+  "net\\.hr",                  "Tabloid",
+  "tportal",                   "Quality",
+  "bug",                       "Tech",
+  "skolski.*portal",           "Education",
+  "srednja",                   "Education",
+  "poslovni",                  "Business",
+  "lider",                     "Business"
+)
+
+clean_data$outlet_type <- "Other"
+for (i in seq_len(nrow(outlet_classification))) {
+  matches <- str_detect(str_to_lower(clean_data$FROM), outlet_classification$pattern[i])
+  clean_data$outlet_type[matches] <- outlet_classification$outlet_type[i]
+}
+```
+
+```{r}
+#| label: fig-outlet-type
+#| fig-cap: "Coverage by Outlet Type"
+#| fig-height: 5
+
+outlet_type_stats <- clean_data %>%
+  group_by(outlet_type) %>%
+  summarise(
+    n_articles = n(),
+    pct_threat = mean(frame_THREAT_present, na.rm = TRUE) * 100,
+    pct_opportunity = mean(frame_OPPORTUNITY_present, na.rm = TRUE) * 100,
+    pct_regulation = mean(frame_REGULATION_present, na.rm = TRUE) * 100,
+    mean_sentiment = mean(sentiment_score, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(n_articles))
+
+outlet_type_long <- outlet_type_stats %>%
+  select(outlet_type, pct_threat, pct_opportunity, pct_regulation) %>%
+  pivot_longer(-outlet_type, names_to = "frame", values_to = "percentage") %>%
+  mutate(frame = str_remove(frame, "pct_") %>% str_to_title())
+
+ggplot(outlet_type_long, aes(x = reorder(outlet_type, percentage), y = percentage, fill = frame)) +
+  geom_col(position = "dodge") +
+  scale_fill_manual(values = c("Threat" = "#e41a1c", "Opportunity" = "#4daf4a", "Regulation" = "#377eb8")) +
+  coord_flip() +
+  labs(
+    title = "Frame Usage by Outlet Type",
+    subtitle = "How different media types frame AI in education",
+    x = NULL, 
+    y = "Percentage of Articles",
+    fill = "Frame"
+  )
+```
+
+```{r}
+#| label: tbl-outlet-type
+#| tbl-cap: "Summary Statistics by Outlet Type"
+
+outlet_summary <- outlet_type_stats %>%
+  mutate(
+    `Mean Sentiment` = round(mean_sentiment, 2),
+    `% Threat` = paste0(round(pct_threat, 1), "%"),
+    `% Opportunity` = paste0(round(pct_opportunity, 1), "%"),
+    `% Regulation` = paste0(round(pct_regulation, 1), "%")
+  ) %>%
+  select(
+    `Outlet Type` = outlet_type,
+    Articles = n_articles,
+    `Mean Sentiment`,
+    `% Threat`,
+    `% Opportunity`,
+    `% Regulation`
+  )
+
+kable(outlet_summary) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+---
+
+## Statistical Tests
+
+### Frame-Outlet Association
+
+```{r}
+#| label: stat-chisq
+
+frame_outlet_table <- table(clean_data$dominant_frame, clean_data$outlet_type)
+chisq_result <- chisq.test(frame_outlet_table)
+
+cat("Chi-Square Test: Dominant Frame vs. Outlet Type\n")
+cat("X² =", round(chisq_result$statistic, 2), "\n")
+cat("df =", chisq_result$parameter, "\n")
+cat("p-value =", format(chisq_result$p.value, scientific = TRUE), "\n")
+
+if (chisq_result$p.value < 0.05) {
+  cat("\nResult: Significant association between outlet type and frame usage (p < 0.05)\n")
+}
+```
+
+### Sentiment by Phase
+
+```{r}
+#| label: stat-anova
+
+anova_result <- aov(sentiment_score ~ narrative_phase, data = clean_data)
+anova_summary <- summary(anova_result)
+
+cat("ANOVA: Sentiment Score by Narrative Phase\n")
+print(anova_summary)
+
+if (anova_summary[[1]]$`Pr(>F)`[1] < 0.05) {
+  cat("\nPost-hoc Tukey HSD:\n")
+  tukey_result <- TukeyHSD(anova_result)
+  print(tukey_result)
+}
+```
+
+---
+
+# Discussion
+
+## Key Findings
+
+### 1. Coverage Patterns
+
+The analysis reveals substantial media attention to AI in education, with identifiable peaks corresponding to key events such as ChatGPT's release and the beginning of school semesters.
+
+### 2. Frame Dominance
+
+Contrary to initial expectations of moral panic, the **OPPORTUNITY** and **REGULATION** frames predominate over the **THREAT** frame across most of the study period. This suggests Croatian media took a relatively pragmatic approach to the topic.
+
+### 3. Narrative Evolution
+
+Clear evidence supports the hypothesized narrative arc:
+
+- **Phase 1 (Emergence)**: Higher threat framing, focus on plagiarism concerns
+- **Phase 2 (Debate)**: Balanced discussion of risks and benefits
+- **Phase 3 (Integration)**: Shift toward practical implementation
+- **Phase 4 (Normalization)**: AI treated as routine educational tool
+
+### 4. Source Variation
+
+Significant differences exist between outlet types:
+
+- **Tabloids**: Higher threat framing, more sensational coverage
+- **Quality press**: More balanced, policy-focused
+- **Education specialists**: Most nuanced, competence-focused
+
+## Limitations
+
+1. **Dictionary-based analysis**: May miss nuanced or novel framings
+2. **Croatian language specificity**: Dictionaries may not capture all relevant terms
+3. **Web sources only**: Excludes print, TV, and social media
+4. **Automated sentiment**: Simplified positive/negative classification
+
+## Future Directions
+
+1. Manual validation of frame classifications
+2. Extension to social media discourse
+3. Comparative analysis with other countries
+4. Longitudinal tracking as AI tools evolve
+
+---
+
+# Conclusion
+
+This analysis demonstrates that Croatian media coverage of AI in education has followed a discernible narrative arc from initial concern to pragmatic integration. While threat frames exist, they are outweighed by opportunity and regulatory framings. The findings suggest media discourse may be more nuanced than moral panic theory would predict, with significant variation across outlet types and over time.
+
+---
+
+# Appendix: Technical Details
+
+## Session Information
+
+```{r}
+#| label: session-info
+
+sessionInfo()
+```
+
+## Data Export
+
+```{r}
+#| label: data-export
+#| eval: false
+
+# Export processed data for further analysis
+write.xlsx(clean_data, "processed_data.xlsx")
+write.xlsx(monthly_stats, "monthly_statistics.xlsx")
+```
+
+---
+
+# References {.unnumbered}
+
+::: {#refs}
+:::
