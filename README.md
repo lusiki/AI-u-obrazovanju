@@ -24,7 +24,7 @@
 ## Overview
 
 This repository contains a media frame analysis examining how Croatian web media covered the emergence of generative AI (ChatGPT, etc.) in education from 2023 to 2025. Using computational text analysis, we track the evolution of media narratives from initial panic through debate to integration.
-The full report is available as a Quarto document [here](https://raw.githack.com/lusiki/AI-u-obrazovanju/main/AI_Education_Media_Analysis.html).
+The presentaion is avaliable as a standalone document [here](https://raw.githack.com/lusiki/AI-u-obrazovanju/main/AI_Education_Presentation.html) and the full report is available as a Quarto document [here](https://raw.githack.com/lusiki/AI-u-obrazovanju/main/AI_Education_Media_Analysis.html).
 
 
 ## Research Questions
