@@ -193,6 +193,9 @@ message("Final clean dataset: ", format(nrow(clean_data), big.mark = ","), " art
 # Close database connection
 dbDisconnect(con, shutdown = TRUE)
 
+
+clean_data <- read.xlsx("./dta.xlsx")
+
 # ==============================================================================
 # SECTION 3: OUTLET CLASSIFICATION
 # ==============================================================================
