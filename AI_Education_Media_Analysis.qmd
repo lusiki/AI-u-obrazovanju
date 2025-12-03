@@ -39,7 +39,7 @@ bibliography: references.bib
 ```{r}
 #| label: setup
 #| include: false
-
+options(repos = c(CRAN = "https://cloud.r-project.org"))
 # ==============================================================================
 # CONFIGURATION - MODIFY THIS PATH TO YOUR DATA FILE
 # ==============================================================================
